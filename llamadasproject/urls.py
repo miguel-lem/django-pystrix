@@ -2,6 +2,7 @@ from rest_framework import routers
 from django.urls import path
 from llamadasproject.views import LlamadasViewset
 from llamadasproject.views import LlamadasView
+from llamadasproject.views2 import LlamadasView2
 from rest_framework.urlpatterns import format_suffix_patterns
 
 router = routers.DefaultRouter()
@@ -13,6 +14,7 @@ router.register(r'llamada',LlamadasViewset, basename = 'llamadasproject')
 urlpatterns = [
     path('realizar_llamada/', LlamadasViewset.as_view({'post': 'realizar_llamada'})),
     path('realizar_llamadaunica/', LlamadasView.as_view({'post': 'realizar_llamadaunica'})),
+    path('realizar_llamadaunica2/', LlamadasView2.as_view({'post': 'realizar_llamadaunica'})),
 ]
 
 urlpatterns += router.urls

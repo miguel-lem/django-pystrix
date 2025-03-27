@@ -159,11 +159,13 @@ class AMICoreUno:
         self._manager.monitor_connection()
 
     def _register_callbacks(self):
+        print("ESTO ES DENTRO DEL LA FUNCION REGISTER_CALLBACKS----------------------------->")
         # Registra las devoluciones de llamada para manejar eventos
         self._manager.register_callback('FullyBooted', self._handle_event)
         self._manager.register_callback('Shutdown', self._handle_shutdown)
         # Registra el callback para el evento DTMF
         self._manager.register_callback('DTMF', self._handle_dtmf_event) #esta linea a sido agregada para ver teclas presionadas
+        print("FIN DE REGISTER_CALLBACK------------------------------------------->")
 
     def _handle_event(self, event, manager):
         print(f"Evento recibido: {event.name}")
@@ -176,33 +178,18 @@ class AMICoreUno:
         """
         Maneja los eventos DTMF cuando el usuario presiona una tecla.
         """
-        digit = event.result['digit']
-        channel = event.result['channel']
+        print("SE INICIO LA FUNCION DE DTMF EVENTOS------------------------------>")
+        print(f"Evento DTMF completo: {event.result}")  # Imprimir todo el evento para depuración
+        #digit = event.result['digit']
+        #channel = event.result['channel']
+        digit = event.result.get('digit', 'Desconocido')
+        channel = event.result.get('channel', 'Desconocido')
         print(f"Tecla presionada: {digit} en el canal: {channel}")
 
         # Aquí podrías realizar una acción con la tecla presionada
-        self.send_to_django_api(digit, channel)
+        #self.send_to_django_api(digit, channel)
+        print("SE FINALIZO LA FUNCION DE DTMF EVENTOS------------------------------>")
 
-    def send_to_django_api(self, digit, channel):
-        """Envía la tecla presionada a la API Django."""
-        api_url = 'http://192.168.1.100:8000/guardar_tecla/'  # Cambia la URL a tu API Django
-        data = {
-            'digit': digit,
-            'channel': channel
-        }
-
-        try:
-            response = requests.post(api_url, data=data)
-            if response.status_code == 200:
-                print(f"Tecla {digit} enviada correctamente a la API.")
-            else:
-                print(f"Error al enviar la tecla {digit} a la API: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            print(f"Error de conexión con la API Django: {e}")
-
-
-
-    #------------------------
     def kill(self):
         self._manager.close()
 
@@ -235,17 +222,35 @@ class AMICoreUno:
             # O simplemente colgar aquí
             action = ami.core._Originate(
                 channel=channel,
-                timeout=30000,
+                timeout=60000,
                 callerid=callerid,
                 variables={},
             )
             action['Context'] = context
             action['Exten'] = exten
             action['Priority'] = priority + 1  # Cambiar prioridad para ejecutar otro paso
-            action['Application'] = 'Hangup'  # Colgar la llamada al finalizar
+            action['Application'] = 'WaitExten'  # Dejar la llamada en espera para recibir DTMF
+            action['Data'] = '30'  # Tiempo en segundos para esperar DTMF
 
             response = self._manager.send_action(action)
             print(response)
+            print("---------SE ESTA COMPROBANDO QUE PARO DE LA PRIORIDAD + 1----------")
+            if response.success:
+                print("---------SE ESTA COMPROBANDO QUE INGRESO DE LA PRIORIDAD + 2----------")
+                # Colgar la llamada al finalizar
+                action = ami.core._Originate(
+                    channel=channel,
+                    timeout=30000,
+                    callerid=callerid,
+                    variables={},
+                )
+                action['Context'] = context
+                action['Exten'] = exten
+                action['Priority'] = priority + 2  # Cambiar prioridad para ejecutar otro paso
+                action['Application'] = 'Hangup'  # Colgar la llamada al finalizar
+
+                response = self._manager.send_action(action)
+                print(response)
         return response
 
 class LlamadasView(viewsets.ViewSet):
@@ -270,13 +275,11 @@ class LlamadasView(viewsets.ViewSet):
         response = ami_core.realizar_llamada(channel, exten, context, priority, callerid)
 
         if response.success:
-            return JsonResponse({'message': 'Llamada realizada con correctamente'})
+            return JsonResponse({'message': 'Llamada realizada correctamente'})
         else:
             return JsonResponse({'message': 'Hubo un error al realizar la llamada'}, status=400)
 
 class llamadasAGI():
-    import pystrix
-
     if __name__ == '__main__':
         agi = pystrix.agi.AGI()
 

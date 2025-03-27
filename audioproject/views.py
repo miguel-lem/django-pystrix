@@ -45,8 +45,8 @@ class AudioProcessor():
     
     def convertir_audio(self,input_audio):
         try:
-            output_path='C:/Users/mlema/Documents/audios/audio_convertido.wav'
-
+            #output_path='C:/Users/mlema/Documents/audios/audio_convertido.wav'
+            output_path = input_audio
             # Generamos un nombre aleatorio para el archivo
             nombre_aleatorio = self.generar_nombre_archivo(12)
 
@@ -92,7 +92,7 @@ class AudioViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def convertir_audio(self, request):
         texto = request.data.get('texto', '')
-
+        
         if not texto:
             return Response({"error": "Debe proporcionar texto."}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -119,7 +119,7 @@ class AudioViewSet(viewsets.ViewSet):
 class AudioViewget(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def convertir_audio2(self,request):
-        texto = 'Estimada Juana la Alpaca le llamamos del Estudio  Juridico Romero D y Asociados, le informamos que tiene una deuda vencida en banco pacifico, dicha deuda se encuentra en nuestro estudio,  para mas informacion presione 1'
+        texto = 'Estimada Juana de Arco le llamamos del Estudio  Juridico Romero D y Asociados, le informamos que tiene una deuda vencida en banco pacifico, dicha deuda se encuentra en nuestro estudio,  para mas informacion presione 1'
 
         if not texto:
             return Response({"error": "Debe proporcionar texto."}, status=status.HTTP_400_BAD_REQUEST)
