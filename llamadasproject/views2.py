@@ -27,9 +27,9 @@ class AMICoreUno:
     _manager = None
     _kill_flag = False
 
+    #funcion para conectarse a AMI con la libreria pystrix
     def __init__(self):
         self._manager = ami.Manager()
-        self._register_callbacks()
 
         try:
             self._manager.connect(_HOST)
@@ -55,44 +55,7 @@ class AMICoreUno:
 
         self._manager.monitor_connection()
 
-    def _register_callbacks(self):
-        print("ESTO ES DENTRO DEL LA FUNCION REGISTER_CALLBACKS----------------------------->")
-        # Registra las devoluciones de llamada para manejar eventos
-        self._manager.register_callback('FullyBooted', self._handle_event)
-        self._manager.register_callback('Shutdown', self._handle_shutdown)
-        # Registra el callback para el evento DTMF
-        self._manager.register_callback('DTMF', self._handle_dtmf_event) #esta linea a sido agregada para ver teclas presionadas
-        print("FIN DE REGISTER_CALLBACK------------------------------------------->")
-
-    def _handle_event(self, event, manager):
-        print(f"Evento recibido: {event.name}")
-
-    def _handle_shutdown(self, event, manager):
-        self._kill_flag = True
-
-    #-------------------------------
-    def _handle_dtmf_event(self, event, manager):
-        """
-        Maneja los eventos DTMF cuando el usuario presiona una tecla.
-        """
-        print("SE INICIO LA FUNCION DE DTMF EVENTOS------------------------------>")
-        print(f"Evento DTMF completo: {event.result}")  # Imprimir todo el evento para depuración
-        #digit = event.result['digit']
-        #channel = event.result['channel']
-        digit = event.result.get('digit', 'Desconocido')
-        channel = event.result.get('channel', 'Desconocido')
-        print(f"Tecla presionada: {digit} en el canal: {channel}")
-
-        # Aquí podrías realizar una acción con la tecla presionada
-        #self.send_to_django_api(digit, channel)
-        print("SE FINALIZO LA FUNCION DE DTMF EVENTOS------------------------------>")
-
-    def kill(self):
-        self._manager.close()
-
-    def is_alive(self):
-        return not self._kill_flag
-
+    #funcion para realizar la llamada
     def realizar_llamada(self, channel, exten,context, priority, callerid):
         # Crear la acción de origen para realizar una llamada
         action = ami.core._Originate(
@@ -100,75 +63,43 @@ class AMICoreUno:
             timeout=30000,
             callerid=callerid,
             variables={},
-            #async=True
         )
-        # Establecer el contexto y la extensión (esto puede necesitar ajustes dependiendo de tu implementación)
+        # Establecer el contexto y la extensión 
         action['Context'] = context
         action['Exten'] = exten
         action['Priority'] = priority
-        action['Application'] = 'Playback'
-        action['Data'] = 'mi_audio'#'hello-world'
+        action['Application'] = 'Playback' #utilizo la accion para enviar la aplicacion de audios
+        action['Data'] = 'mi_audio'#por el momento se trabaja con el audio que se dubio al servidor asterisk
         action['Async']= 'no',  # Sincrónico, espera a que termine la reproducción
-        #'http://localhost:8000/api/audios/crear_audioget_convertido/'
         response = self._manager.send_action(action)
         # Verificar respuesta completa (para depuración)
         print(response)
-        # Esperar 5 segundos
-        time.sleep(5)  # Pausar 5 segundos después de la reproducción del audio
-
         
+        #utilizo la funcion con la cual esucho las teclas que presione en el telefono
+        #le paso las credenciales del usuario ami
         self.obtener_teclas_asterisk("admin", "mi_contrasenia", "192.168.2.18")
-        # Luego puedes continuar con otras acciones como colgar o continuar la llamada
+        #esta parte estoy realziando pruebas para comprobar que durante la llamada me permita teclear
+        time.sleep(5)  # Pausar 5 segundos después de la reproducción del audio
+        # Luego continuar con otras acciones como colgar o continuar la llamada
+        print("Finalizando la llamada...") 
         action['Action']= 'Hangup',
         action['Channel']= channel
-        '''  
-        # Ahora, si el audio ha sido reproducido, podemos colgar o continuar con más acciones
-        if response.success:
-            # Esto asegura que Asterisk espere a que termine la reproducción
-            # O simplemente colgar aquí
-            action = ami.core._Originate(
-                channel=channel,
-                timeout=60000,
-                callerid=callerid,
-                variables={},
-            )
-            action['Context'] = context
-            action['Exten'] = exten
-            action['Priority'] = priority + 1  # Cambiar prioridad para ejecutar otro paso
-            action['Application'] = 'WaitExten'  # Dejar la llamada en espera para recibir DTMF
-            action['Data'] = '30'  # Tiempo en segundos para esperar DTMF
-        
-            response = self._manager.send_action(action)
-            print(response)
-            print("---------SE ESTA COMPROBANDO QUE PARO DE LA PRIORIDAD + 1----------")
-            if response.success:
-                print("---------SE ESTA COMPROBANDO QUE INGRESO DE LA PRIORIDAD + 2----------")
-                # Colgar la llamada al finalizar
-                action = ami.core._Originate(
-                    channel=channel,
-                    timeout=30000,
-                    callerid=callerid,
-                    variables={},
-                )
-                action['Context'] = context
-                action['Exten'] = exten
-                action['Priority'] = priority + 2  # Cambiar prioridad para ejecutar otro paso
-                action['Application'] = 'Hangup'  # Colgar la llamada al finalizar
+        #linea agregada para realizar pruebas y que luego se pueda colgar la llamda al escuchar 
+        response = self._manager.send_action(action)
 
-                response = self._manager.send_action(action)
-                print(response)
-        '''  
         return response
-    #############################################
+    #funcion para conectarse con socket hacia asterisk ami, poder asi escuchar los eventos de teclado
     def obtener_teclas_asterisk(self,usuario_ami, secreto_ami, ip_asterisk):
         try:
+            #iniciar socket
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((ip_asterisk, 5038))
-            
-            saludo = s.recv(1024).decode()  # Esto debería ser "Asterisk Call Manager/7.0.3"
+
+            # Capturo la primera conecciopn donde debe mostrarme algo como "Asterisk Call Manager/7.0.3"
+            saludo = s.recv(1024).decode()  
             print(f"Saludo AMI: {saludo}")  # Mostrar saludo inicial
 
-            # Autenticación AMI
+            # Autenticación AMI le capturo y la envio convertido para que asterisk comprenda
             s.send("Action:Login\n".encode())
             comando="Username:"+usuario_ami+"\n"
             s.send(comando.encode())
@@ -177,56 +108,52 @@ class AMICoreUno:
             s.send("\n".encode())
             respuesta = s.recv(1024).decode()
             print("Valor que extrae el reciv: ",respuesta)
+            #comprobacion si no logra autenticarse
             if "Success" not in respuesta:
                 return "Error de autenticación AMI"
-
-
-            # Enviar el comando para reproducir el archivo de audio
-            '''s.send(f"Action: Playback\r\n"
-                    f"Channel: {exten}\r\n"  # Canal de la llamada
-                    f"Application: Playback\r\n"
-                    f"Data: mi_audio\r\n"  # Aquí 'mi_audio' es el nombre del archivo
-                    f"\r\n".encode())'''
             
 
             # Obtener la variable LLAMADA_TECLAS
-            # # Esperar la respuesta de Asterisk
+            # Esperar la respuesta de Asterisk
             respuesta = s.recv(1024).decode()
             print(f"Respuesta de Originate: {respuesta}")
             
-            # Verificar si la llamada fue correctamente originada
-            if "Response: Success" in respuesta:
-                print("La llamada inicio correctamente.")
-            #else:
-                #print("Error al intentar realizar la llamada.")
-            
             # Mantener la conexión abierta y escuchar eventos
             while True:
-                respuesta_evento = s.recv(1024).decode()  # Escuchar eventos de Asterisk
+                # Escuchar eventos de Asterisk
+                respuesta_evento = s.recv(1024).decode()  
                 # Salir del ciclo si se recibe un evento de fin de llamada
                 if respuesta_evento:
+                    #aqui se imprime el evento tal cual llega desde asterisk
                     #print(f"Evento recibido: {respuesta_evento}")
                     
+                    #creo una variable para capturar en ella los datos y luego extraer el digito que presione del otro lado
                     event_data = {}
                     for line in respuesta_evento.split('\n'):
                         if ':' in line:
+                            #utilizo split para separar los valores
                             key, value = line.split(':', 1)
                             event_data[key.strip()] = value.strip()
 
+                    #imprimo los valores para cargarlos en consola
                     print(f"Datos extraídos: {event_data}")
-                    digit = event_data.get('Digit', 'No digit found')# Si no encuentra la clave, retorna 'No digit found'
+                    # Si no encuentra la clave, le envio un mensaje porque los eventos que me envie asterisk no siempre
+                    #tienen eventos de tecla mientras se desarrolla la ejecucion de la llamada.
+                    digit = event_data.get('Digit', 'Digito no encontrado')
+                    #impresion de la tecla que se esta capturando
                     print(f"TECLA RECIBIDA -------------->: {digit}")
-                    # Si la estructura es válida para un JSON, puedes intentar convertirlo
+                    # Si la estructura es válida para un JSON, aqui debe permitir extraerle para cambiarle
                     try:
-                        json_data = json.dumps(event_data)  # Convierte el diccionario a un string JSON
+                        # Conversion el diccionario a un string JSON
+                        #esta parte fue agregada por pruebas pero se la mantiene en caso de a futuro necesitar
+                        json_data = json.dumps(event_data)  
                         print(f"Datos como JSON------>: {json_data}")
-                        #print(f"TECLA RECIBIDA -------------->: {json_data['Digit']}")
                     except Exception as e:
                         print(f"Error al convertir a JSON: {e}")
 
 
                     if "Event: NewState" in respuesta_evento:
-                        # Aquí puedes manejar las teclas presionadas si están configuradas en AMI
+                        # Aquí se puede manejar las teclas presionadas si están configuradas en AMI
                         if "State: Ringing" in respuesta_evento or "State: Up" in respuesta_evento:
                             print("La llamada está sonando o contestada")
                     
@@ -241,13 +168,6 @@ class AMICoreUno:
 
         except Exception as e:
             return f"Error: {e}"
-    #############################################
-
-
-
-
-
-
 
 
 
@@ -262,9 +182,6 @@ class LlamadasView2(viewsets.ViewSet):
         context = request.data.get('context', '')
         priority = request.data.get('priority', 1)
         callerid = request.data.get('callerid', '')
-        #print(dir(ami.core))
-        #print("esto es las librerias del ami")
-        #print(dir(ami.ami))
 
         # Iniciar la conexión AMI
         ami_core = AMICoreUno()
@@ -276,3 +193,8 @@ class LlamadasView2(viewsets.ViewSet):
             return JsonResponse({'message': 'Llamada realizada correctamente'})
         else:
             return JsonResponse({'message': 'Hubo un error al realizar la llamada'}, status=400)
+
+
+
+
+
