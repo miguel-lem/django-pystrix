@@ -121,7 +121,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -129,6 +129,12 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 import os
 # Configuración para servir archivos de medios
-MEDIA_URL = '/media/'  # Esta es la URL para acceder a los archivos de medios
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # Esta es la ruta absoluta donde se guardarán los archivos de medios
+MEDIA_URL = '/audios/'  # Esta es la URL para acceder a los archivos de medios
+MEDIA_ROOT = os.path.join(BASE_DIR, 'audios')  # Esta es la ruta absoluta donde se guardarán los archivos de medios
+
+# Ubicación donde Django guarda los archivos estáticos
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "static"),
+]
+
 
