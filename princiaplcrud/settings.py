@@ -129,12 +129,12 @@ STATIC_URL = '/static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 import os
 # Configuración para servir archivos de medios
-MEDIA_URL = '/audios/'  # Esta es la URL para acceder a los archivos de medios
-MEDIA_ROOT = os.path.join(BASE_DIR, 'audios')  # Esta es la ruta absoluta donde se guardarán los archivos de medios
+#MEDIA_URL = '/audios/'  # Esta es la URL para acceder a los archivos de medios
+#MEDIA_ROOT = os.path.join(BASE_DIR, 'audios')  # Esta es la ruta absoluta donde se guardarán los archivos de medios
 
 # Ubicación donde Django guarda los archivos estáticos
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, "static"),
-]
+#STATICFILES_DIRS = [
+    #os.path.join(BASE_DIR, "static"),
+#]
 
 
