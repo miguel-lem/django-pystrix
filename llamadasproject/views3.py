@@ -17,10 +17,11 @@ from django.http import FileResponse, JsonResponse
 import os
 import subprocess
 import uuid
-#Creacion de un hilo para ejecucion paralela
-import threading
+from pathlib import Path
+from paramiko import SSHClient, AutoAddPolicy
+import datetime
 
-# Aquí deberías agregar tu configuración de conexión
+# Variables que se utilizaran para la configuracion y enlace con AMI
 _HOST = '192.168.2.18'
 _USERNAME = 'admin'
 _PASSWORD = 'mi_contrasenia'
@@ -37,7 +38,6 @@ class RealizarLllamada:
 
     def __init__(self):
         self._manager = ami.Manager()
-
         try:
             self._manager.connect(_HOST)
 
@@ -68,22 +68,21 @@ class RealizarLllamada:
     def is_alive(self):
         return not self._kill_flag
 
+    #funcion para realziar la llamada
     def realizar_llamada(self, channel, exten,context, priority, callerid,nombre_audio):
-        nombre_audio_limpio = nombre_audio.replace('.wav', '')
-        # Crear la acción de origen para realizar una llamada
+        # Crear la acción de origen para realizar una llamada 
         action = ami.core._Originate(
             channel=channel,
             timeout=30000,
             callerid=callerid,
             variables={},
-            #async=True
         )
         # Establecer el contexto y la extensión (esto puede necesitar ajustes dependiendo de tu implementación)
-        action['Context'] = context
+        action['Context'] = context#este conexto es el que se agrego dentro de extensions
         action['Exten'] = exten
         action['Priority'] = priority
-        action['Application'] = 'Playback'
-        action['Data'] = nombre_audio_limpio#'mi_audio'#'hello-world'
+        action['Application'] = 'Playback'#para que reproduzca el audio
+        action['Data'] = nombre_audio#elaudio#'mi_audio'#'hello-world'
         response = self._manager.send_action(action)
         # Verificar respuesta completa (para depuración)
         print(response)
@@ -97,6 +96,8 @@ class RealizarLllamada:
         return response
 
 
+#esta clase es para poder extraer desde el front los datos, por el momento de la practica se esta utilizando 
+#un cliente api rest Postman
 class LlamadasView3(viewsets.ViewSet):
     """
     Vista para manejar la llamada desde la API.
@@ -113,7 +114,7 @@ class LlamadasView3(viewsets.ViewSet):
         #llamamos a la funcion de crear el audio y enviarlo a al servidor asteris
         #creo el objeto de crearaudio
         gestor_audio = CrearAudio()
-        time.sleep(3)
+        time.sleep(1)
         #llamo a la funcion que quiero generarle el texto en audio
         nombre_audio_generado = gestor_audio.text_to_speech()
         #llamo a la funcion con la cual elimino de asterisk los audios que tiene mas de 3 minutos alli
@@ -124,14 +125,16 @@ class LlamadasView3(viewsets.ViewSet):
         print("resultado de nombre: ",nombre_audio_generado)
         #le separo el nombre de la extension para poder pasarle al servidor y que entienda cual es el audio que quier
         #se reproduzca en la llamada
-        nombre_data = os.path.splitext(nombre_audio_generado)[0]
+        nombre_data = Path(nombre_audio_generado).stem
+        #se agregauna limpieza en caso de espacios
+        nombre_data = nombre_data.strip()
         #impresion para corroborar que tiene el nombre sin la extension
         print("nombre sin la extension: ", nombre_data)
-        #capturo la variable para enviarle 
+        print(type(nombre_data))
         print("---------------------------paso de la extraccion de nombre---------------")
-        # Iniciar la conexión AMI
+        # Iniciar la conexión AMI que esta en la clas donde creamos la funcion para realziar la llamada
         ami_core = RealizarLllamada()
-        # Realizar la llamada
+        # Realizar la llamada, le pasamos los parametros
         response = ami_core.realizar_llamada(channel, exten, context, priority, callerid,nombre_data)
 
         if response.success:
@@ -170,7 +173,7 @@ class EscucharEventos:
             respuesta = s.recv(1024).decode()
             print(f"Respuesta de Originate: {respuesta}")
             
-            # Mantener la conexión abierta y escuchar eventos
+            # Mantengo la conexión abierta y escuchar eventos
             while True:
                 # Escuchar eventos de Asterisk
                 respuesta_evento = s.recv(1024).decode()  
@@ -222,28 +225,38 @@ class EscucharEventos:
             return f"Error: {e}"
 
 
-from paramiko import SSHClient, AutoAddPolicy
-import datetime
-
+#esta clase es para poder generar el audio, esta con ViewSet porque las primeras pruebas fueron realizadas
+#con cliente rest, pero se cambio 
+#los cambios agregados permiten que se cree el audio a travez d un texto, se convierta a formato de asterisk
+#y luego se lo pueda subir al servidor, 
+#tambien se agrego la funcionalidad de que elimine el archivo en el servidor si ya tiene mas de tres minutos alli
 class CrearAudio(ViewSet):
     def __init__(self):
         # Configuración del servidor Asterisk remoto
+        #aqui se agrego la coneccion ssh para poder tener acceso al servidor de asterisk 
+        #de esa manera almacenar y poder aliminar archivos de audio de la ruta de sonidos de asterisk
         self.asterisk_server = {
-            'hostname': '192.168.2.18',  # Cambiar por la IP real
+            'hostname': '192.168.2.18',  # ip de donde esta instalado asterisk, en este caso una VM
             'port': 22,  # Puerto SSH
-            'username': 'pcprueba',
-            'password': '12345',
+            'username': 'pcprueba',#este usuario dee ser el que tiene accedo con permisos a la carpeta de sonidos
+            'password': '12345',#la contraseña es configurable en caso de crear un usuario
             'remote_path': '/var/lib/asterisk/sounds/'  # Ruta donde se guardarán los audios
         }
 
 
-    def text_to_speech(self):#,keep_seconds=180):
-        texto="Estimado cliente Maribel Escobar, en representacion de Banco del Pacífico, el ESTUDIO JURIDICO ROMERO D Y ASOCIADOS le recuerda que mantiene su credito vencido con un saldo de $1080"
+    #funcion para convertir el texto en audio
+    def text_to_speech(self):
+        #aqui creo la variable con el texto que quiero convertir, 
+        #por el momento cuando creo esta parte es asi, ya luego se agregara con consultas hacia la base de datos
+        #debido a que cada llamada debera ser personalizada
+        texto="Estimado cliente Evelin Sandoval, en representacion de Banco del Pacífico, el ESTUDIO JURIDICO ROMERO D Y ASOCIADOS le recuerda que mantiene su credito vencido con un saldo de $1080"
         """Función para convertir texto a audio en formato compatible con Asterisk"""
         if not texto:
+            #aqui se lo pued modificar y en caso no proporcionen texto, para pasarle alguno por defecto
             raise ValueError("No se proporcionó texto")
 
         try:
+            #aqui estan los pasos para administrar el proceso de generar el audio y de eliminacion temporal
             # 1. Generar audio inicial con pyttsx3
             output_file = self._generate_tts_audio(texto)
             if not output_file:
@@ -260,17 +273,15 @@ class CrearAudio(ViewSet):
                 raise RuntimeError("Error al convertir el audio")
 
             # 4. Enviar el archivo al servidor Asterisk
+            #aqui le capturo el nombre con el cual se esta guardando en el servidor de asterisk
             remote_filename = self._send_to_asterisk_server(converted_file)
 
             # 5. Limpiar archivo local convertido
             if os.path.exists(converted_file):
                 os.remove(converted_file)
 
-            # Programar eliminación remota después de cierta cantidad de segundos
-            #if keep_seconds > 0:
-                #threading.Timer(keep_seconds, self._delete_remote_file, [remote_filename]).start()
-
-            return converted_file
+            #le retorno el nomrbe capturado, porque es la variable que envio a la funcion de geenrar la llamada
+            return remote_filename
 
         except Exception as e:
             # Limpieza en caso de error
@@ -280,9 +291,14 @@ class CrearAudio(ViewSet):
                 os.remove(converted_file)
             raise e
 
+    #funcion para enviar el archivo a asterisk
     def _send_to_asterisk_server(self, local_file):
         """Envía el archivo al servidor Asterisk remoto via SFTP"""
+        #inicio la coneccion a ssh
         ssh = SSHClient()
+        # Configuracion de política para auto-agregar claves desconocidas, 
+        #se esta utilizando por las pruebas, luego ya se debe quitar cuando salga a produccion
+        #y buscar alguna alternativa
         ssh.set_missing_host_key_policy(AutoAddPolicy())
         
         try:
@@ -292,10 +308,10 @@ class CrearAudio(ViewSet):
                 port=self.asterisk_server['port'],
                 username=self.asterisk_server['username'],
                 password=self.asterisk_server['password'],
-                timeout=10  # Timeout para evitar bloqueos
+                timeout=10  # Tiempo fuera para evitar bloqueos
             )
             
-            # 2. Verificar permisos del directorio remoto
+            #Verificar permisos del directorio remoto
             sftp = ssh.open_sftp()
 
             try:
@@ -303,8 +319,9 @@ class CrearAudio(ViewSet):
             except IOError:
                 raise RuntimeError(f"El directorio remoto no existe o no es accesible: {self.asterisk_server['remote_path']}")
                 
-            # 3. Subir archivo con permisos explícitos
+            #Subir archivo con permisos explícitos (para este determinado formato)
             remote_filename = f"converted_temp_audio_{uuid.uuid4().hex}.wav"
+            #controlo la ruta donde estoy almacenando el archivo
             remote_path = f"{self.asterisk_server['remote_path']}{remote_filename}"
             
             # Subir el archivo
@@ -312,7 +329,7 @@ class CrearAudio(ViewSet):
             
             # Asegurarse de que los permisos son correctos
             sftp.chmod(remote_path, 0o644)  # -rw-r--r--
-            # 4. Verificar que el archivo se creó correctamente
+            #Verificar que el archivo se creó correctamente
             try:
                 if sftp.stat(remote_path).st_size == 0:
                     sftp.remove(remote_path)
@@ -320,7 +337,8 @@ class CrearAudio(ViewSet):
             except IOError:
                 raise RuntimeError("No se pudo verificar el archivo remoto")
             
-            return remote_filename  # Retornamos solo el nombre del archivo
+            # Retorno el nombre del archivo
+            return remote_filename  
             
         except Exception as e:
             # Limpieza en caso de error durante la subida
@@ -335,8 +353,10 @@ class CrearAudio(ViewSet):
                 sftp.close()
             ssh.close()
     
+    #funcion para eliminar los archivos viejos dentro de asterisk
     def cleanup_old_audios(self, minutes=3):
         """Elimina archivos de audio más antiguos que X minutos del servidor Asterisk"""
+        #genero las conecciones
         ssh = SSHClient()
         ssh.set_missing_host_key_policy(AutoAddPolicy())
         
@@ -352,14 +372,21 @@ class CrearAudio(ViewSet):
             cutoff_time = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
             
             try:
+                #le paso la ruta
                 for filename in sftp.listdir(self.asterisk_server['remote_path']):
+                    #controlo que elija los audios que empeicen en base al nombre creado y con formato wav
+                    #este control esta agregado para evitar eliminar los otros audios que contiene asterisk
                     if filename.startswith('converted_temp_audio_') and filename.endswith('.wav'):
                         filepath = self.asterisk_server['remote_path'] + filename
+                        #el try catch es en caso de que no exista algun archivo que empiece con ese nombre
                         try:
+                            #consulto el archivo en la ruta, es decir lo extraigo
                             file_attr = sftp.stat(filepath)
+                            #coversion de tiempo de cuando fuecreado
                             file_time = datetime.datetime.fromtimestamp(file_attr.st_mtime)
-                            
+                            #comparo si el tiempo es mas de tres minutos de haber sido creado
                             if file_time < cutoff_time:
+                                #lo elimino si cumple con el tiempo
                                 sftp.remove(filepath)
                                 print(f"Eliminado archivo antiguo: {filename}")
                         except IOError:
@@ -376,33 +403,42 @@ class CrearAudio(ViewSet):
             ssh.close()
 
 
+    #esta funcion es para eliminar los archivos del sistema desde el cual se esta trabajando 
     def _delete_file(self, file_path):
         """Elimina un archivo si existe"""
         try:
+            #buscar si esta en el sistema operativo
             if os.path.exists(file_path):
                 os.remove(file_path)
                 print(f"Archivo {file_path} eliminado después del tiempo especificado")
         except Exception as e:
             print(f"Error al eliminar archivo {file_path}: {e}")
 
-    # Las funciones _generate_tts_audio y _convert_to_asterisk_format permanecen igual
+    # Funcion para convertir el texto en audio
     def _generate_tts_audio(self, texto):
         """Genera el audio inicial con pyttsx3"""
         try:
+            #inicio la funcion
             engine = pyttsx3.init()
+            #controplamos la velocidad, el valor mas alto es mas veloz, va hasta 300
             engine.setProperty('rate', 150)
+            #control del volumen en el audio rangos que se puede manejar 0.5, 0.8, 1.0
             engine.setProperty('volume', 1.0)
 
-            # Usar nombre de archivo único
+            # Usar nombre de archivo único, con eso evito colision de nombres en el servidor
             output_file = f"temp_audio_{uuid.uuid4().hex}.wav"
+            #convierte el audio y lo guarda en la ruta especificada
             engine.save_to_file(texto, output_file)
+            #tiene una funcion similar alasyn await, ya que permite terminar un proceso para poder continuar
             engine.runAndWait()
 
+            #retorno el valor y en caso que no se genere regresa un none
             return output_file if os.path.exists(output_file) else None
         except Exception as e:
             print(f"Error en generación TTS: {e}")
             return None
 
+    #funcion para conertir el archivo a un formato compatible con asterisk
     def _convert_to_asterisk_format(self, input_file):
         """Convierte el audio a formato compatible con Asterisk"""
         try:
@@ -433,23 +469,3 @@ class CrearAudio(ViewSet):
             return None
 
 
-class subir_audioAsterisk:
-    def copy_to_asterisk_temp(audio_file):
-        asterisk_temp_dir="/var/lib/asterisk/tmp/"
-        """Copia el archivo al directorio temporal de Asterisk"""
-        try:
-            if not os.path.exists(asterisk_temp_dir):
-                os.makedirs(asterisk_temp_dir, exist_ok=True)
-            
-            filename = f"temp_audio_{uuid.uuid4().hex}.wav"
-            dest_path = os.path.join(asterisk_temp_dir, filename)
-            
-            shutil.copy(audio_file, dest_path)
-            
-            # Programar eliminación
-            threading.Timer(15, lambda: os.remove(dest_path) if os.path.exists(dest_path) else None).start()
-            
-            return filename
-            
-        except Exception as e:
-            raise RuntimeError(f"Error al copiar a directorio temporal de Asterisk: {e}")
